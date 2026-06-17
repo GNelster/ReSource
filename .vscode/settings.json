@@ -1,0 +1,5 @@
+{
+    "git.ignoredRepositories": [
+        ".build/checkouts/swift-argument-parser"
+    ]
+}

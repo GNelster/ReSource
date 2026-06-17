@@ -1,6 +1,6 @@
 # ReSource
 
-A macOS terminal tool for auditing startup items and reclaiming disk space. Built for people who want to know what's running on their machine and clean it up without installing a GUI app.
+A macOS terminal tool for auditing startup items, reclaiming disk space, and monitoring memory. Built for people who want to know what's running on their machine and clean it up without installing a GUI app.
 
 ![ReSource](screenshot.png)
 
@@ -21,6 +21,11 @@ Scanned locations:
 - Homebrew download cache
 - npm, Yarn, pip caches
 - Browser caches (Safari, Chrome, Firefox, Arc, Brave, Edge)
+- Old Downloads — files in `~/Downloads` untouched for 1+ year, sorted by size
+- App Leftovers — orphaned support files, containers, and preferences from apps no longer installed
+
+### Memory
+Shows a live breakdown of system RAM and top processes sorted by usage — same categories as Activity Monitor (Used, App, Wired, Compressed, Cached, Free).
 
 ## Requirements
 
@@ -44,6 +49,7 @@ Then just type `resource` in any terminal window.
 resource           # interactive menu
 resource startup   # jump straight to startup audit
 resource clean     # jump straight to clean
+resource memory    # jump straight to memory
 ```
 
 ### Keyboard shortcuts
@@ -72,6 +78,7 @@ Sources/ReSource/
   Commands/               # argument-parser subcommands
   Startup/                # launch item scanning and list view
   Clean/                  # cache scanning and list view
+  Memory/                 # memory snapshot and process list
   TUI/                    # raw terminal, menu, key reading
   Output/                 # spinner, progress bar, styles
   Utils/                  # shell runner, formatter, prompt

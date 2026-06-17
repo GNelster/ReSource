@@ -11,6 +11,8 @@ enum CleanCategory: String, CaseIterable {
     case yarn              = "Yarn Cache"
     case pip               = "pip Cache"
     case browserCaches     = "Browser Caches"
+    case oldDownloads      = "Old Downloads  (1+ year)"
+    case appLeftovers      = "App Leftovers"
 }
 
 struct CleanItem {
@@ -19,4 +21,3 @@ struct CleanItem {
     let category: CleanCategory
     let sizeBytes: Int64
 }
-

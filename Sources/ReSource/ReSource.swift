@@ -4,8 +4,8 @@ import ArgumentParser
 struct ReSourceCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "resource",
-        abstract: "Mac resource inspector — startup items and leftover files.",
-        subcommands: [StartupCommand.self, CleanCommand.self]
+        abstract: "Mac resource inspector — startup items, disk cleanup, and memory.",
+        subcommands: [StartupCommand.self, CleanCommand.self, MemoryCommand.self]
     )
 
     mutating func run() throws {
@@ -15,8 +15,12 @@ struct ReSourceCLI: ParsableCommand {
                 var cmd = try StartupCommand.parse([])
                 try cmd.run()
             },
-            MenuEntry(name: "clean",   description: "Safely reclaim space from known cleanup categories") {
+            MenuEntry(name: "clean",   description: "Reclaim space from caches, leftovers, and old downloads") {
                 var cmd = try CleanCommand.parse([])
+                try cmd.run()
+            },
+            MenuEntry(name: "memory",  description: "Show RAM usage by process") {
+                var cmd = try MemoryCommand.parse([])
                 try cmd.run()
             },
         ])

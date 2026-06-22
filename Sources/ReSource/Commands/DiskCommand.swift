@@ -49,24 +49,16 @@ struct DiskCommand: ParsableCommand {
             print()
         }
 
-        // ── Home directory (incremental — real progress) ──────
-        let subdirs  = analyzer.homeSubdirectories()
-        let progress = ProgressBar(label: "Scanning home directory", total: subdirs.count)
-        progress.start()
-
-        var dirs: [DirectoryEntry] = []
-        for path in subdirs {
-            let name = URL(fileURLWithPath: path).lastPathComponent
-            let size = analyzer.sizeOf(path: path)
-            dirs.append(DirectoryEntry(name: name, path: path, bytes: size))
-            progress.tick(item: "~/\(name)")
-        }
-        progress.complete(label: "Home directory scanned")
-        dirs.sort { $0.bytes > $1.bytes }
-
+        // ── Interactive browser ───────────────────────────────
+        let scanSpinner = Spinner("Scanning home directory")
+        scanSpinner.start()
+        // Pre-warm the root level so the first render is instant
+        _ = analyzer.homeSubdirectories()
+        scanSpinner.stop(success: true, label: "Ready  ·  use arrow keys to navigate, ↵ to open, esc to quit")
         print()
-        Style.subheader("Home  (\(analyzer.homePath))")
-        printDirectories(dirs)
+
+        let rootPath = (path.map { ($0 as NSString).expandingTildeInPath }) ?? analyzer.homePath
+        DiskBrowser(rootPath: rootPath).run()
     }
 
     // MARK: - Render helpers
@@ -81,29 +73,6 @@ struct DiskCommand: ParsableCommand {
         if total > 0 {
             print()
             Style.item("  \("Total".padded(to: 20))  \(Style.bold(Format.bytes(total)))")
-        }
-    }
-
-    private func printDirectories(_ dirs: [DirectoryEntry]) {
-        guard !dirs.isEmpty else {
-            Style.item(Style.dim("No directories found."))
-            return
-        }
-
-        let maxBytes  = dirs.first?.bytes ?? 1
-        let cols      = TermSize.columns
-        let nameW     = min(20, dirs.map { $0.name.count }.max() ?? 10)
-        let sizeW     = 9
-        let barW      = min(24, max(10, cols - nameW - sizeW - 12))
-
-        for entry in dirs {
-            let name    = entry.name.padded(to: nameW)
-            let size    = rightAlign(Format.bytes(entry.bytes), width: sizeW)
-            let frac    = Double(entry.bytes) / Double(maxBytes)
-            let bar     = frac > 0.01
-                            ? Color.green.apply(Format.bar(fraction: frac, width: barW))
-                            : Style.dim(Format.bar(fraction: frac, width: barW))
-            Style.item("  \(name)  \(bar)  \(size)")
         }
     }
 

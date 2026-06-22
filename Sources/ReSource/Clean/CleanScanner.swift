@@ -1,24 +1,34 @@
 import Foundation
 
-struct CleanScanner {
+// FileManager's basic file-system operations are thread-safe; @unchecked Sendable
+// lets us capture `self` in the concurrent dispatch closures below.
+struct CleanScanner: @unchecked Sendable {
     private let fm   = FileManager.default
     private let home = FileManager.default.homeDirectoryForCurrentUser.path
+    private let deadLaunchItems: [LaunchItem]
+    private let config: Config
+
+    init(deadLaunchItems: [LaunchItem] = [], config: Config = ConfigManager.load()) {
+        self.deadLaunchItems = deadLaunchItems
+        self.config = config
+    }
 
     func scan() -> [CleanItem] {
-        var items: [CleanItem] = []
-        items += derivedData()
-        items += deviceSupport()
-        items += simulators()
-        items += simulatorLogs()
-        items += diagnosticReports()
-        items += brewCache()
-        items += npmCache()
-        items += yarnCache()
-        items += pipCache()
-        items += browserCaches()
-        items += oldDownloads()
-        items += appLeftovers()
-        return items
+        let scanners: [@Sendable () -> [CleanItem]] = [
+            derivedData, deviceSupport, simulators, simulatorLogs,
+            diagnosticReports, brewCache, npmCache, yarnCache, pipCache,
+            cargoCache, gradleCache, mavenCache, cocoaPodsCache,
+            swiftPMCache, pnpmCache,
+            browserCaches, oldDownloads, appLeftovers, deadAgentLeftovers,
+        ]
+
+        // Pre-allocate one slot per scanner; concurrentPerform writes each slot
+        // exactly once with a unique index — no actual data race.
+        let slots = ResultSlots(count: scanners.count)
+        DispatchQueue.concurrentPerform(iterations: scanners.count) { i in
+            slots.set(scanners[i](), at: i)
+        }
+        return slots.collect()
     }
 
     // MARK: - Categories
@@ -143,6 +153,72 @@ struct CleanScanner {
         return [CleanItem(name: "pip cache", path: path, category: .pip, sizeBytes: size)]
     }
 
+    private func cargoCache() -> [CleanItem] {
+        // ~/.cargo/registry and ~/.cargo/git are the two largest cache roots for Rust
+        let candidates: [(String, String)] = [
+            ("Cargo registry",  "\(home)/.cargo/registry"),
+            ("Cargo git cache", "\(home)/.cargo/git"),
+        ]
+        return candidates.compactMap { (name, path) -> CleanItem? in
+            guard fm.fileExists(atPath: path) else { return nil }
+            let size = sizeOf(path)
+            guard size > 0 else { return nil }
+            return CleanItem(name: name, path: path, category: .cargo, sizeBytes: size)
+        }
+    }
+
+    private func gradleCache() -> [CleanItem] {
+        let path = "\(home)/.gradle/caches"
+        guard fm.fileExists(atPath: path) else { return [] }
+        let size = sizeOf(path)
+        guard size > 0 else { return [] }
+        return [CleanItem(name: "Gradle caches", path: path, category: .gradle, sizeBytes: size)]
+    }
+
+    private func mavenCache() -> [CleanItem] {
+        let path = "\(home)/.m2/repository"
+        guard fm.fileExists(atPath: path) else { return [] }
+        let size = sizeOf(path)
+        guard size > 0 else { return [] }
+        return [CleanItem(name: "Maven repository", path: path, category: .maven, sizeBytes: size)]
+    }
+
+    private func cocoaPodsCache() -> [CleanItem] {
+        // ~/.cocoapods/repos holds the spec repo, often 1–2 GB
+        let path = "\(home)/.cocoapods/repos"
+        guard fm.fileExists(atPath: path) else { return [] }
+        let size = sizeOf(path)
+        guard size > 0 else { return [] }
+        return [CleanItem(name: "CocoaPods spec repos", path: path, category: .cocoapods, sizeBytes: size)]
+    }
+
+    private func swiftPMCache() -> [CleanItem] {
+        let candidates: [(String, String)] = [
+            ("Swift PM cache",        "\(home)/.swiftpm/cache"),
+            ("Swift PM repositories", "\(home)/.swiftpm/repositories"),
+        ]
+        return candidates.compactMap { (name, path) -> CleanItem? in
+            guard fm.fileExists(atPath: path) else { return nil }
+            let size = sizeOf(path)
+            guard size > 0 else { return nil }
+            return CleanItem(name: name, path: path, category: .swiftPM, sizeBytes: size)
+        }
+    }
+
+    private func pnpmCache() -> [CleanItem] {
+        let candidates = [
+            "\(home)/.pnpm-store",
+            "\(home)/Library/pnpm/store",
+        ]
+        for path in candidates {
+            guard fm.fileExists(atPath: path) else { continue }
+            let size = sizeOf(path)
+            guard size > 0 else { continue }
+            return [CleanItem(name: "pnpm store", path: path, category: .pnpm, sizeBytes: size)]
+        }
+        return []
+    }
+
     private func browserCaches() -> [CleanItem] {
         let candidates: [(String, String)] = [
             ("Safari",  "\(home)/Library/Caches/com.apple.Safari"),
@@ -163,19 +239,77 @@ struct CleanScanner {
     private func oldDownloads() -> [CleanItem] {
         let base   = "\(home)/Downloads"
         guard let entries = try? fm.contentsOfDirectory(atPath: base) else { return [] }
-        let cutoff = Date().addingTimeInterval(-365 * 24 * 3600)
+        let ageDays = Double(config.oldDownloadsAgeDays)
+        let cutoff  = Date().addingTimeInterval(-ageDays * 24 * 3600)
         var items: [CleanItem] = []
 
         for entry in entries where entry != ".DS_Store" {
             let path = "\(base)/\(entry)"
+            guard !config.excludedCleanPaths.contains(path) else { continue }
             guard let attrs = try? fm.attributesOfItem(atPath: path),
                   let modified = attrs[.modificationDate] as? Date,
                   modified < cutoff
             else { continue }
 
-            let years = max(1, Int(Date().timeIntervalSince(modified) / (365 * 24 * 3600)))
-            let label = years >= 2 ? "\(entry)  (\(years)y old)" : "\(entry)  (1y old)"
+            let days = Int(Date().timeIntervalSince(modified) / (24 * 3600))
+            let label: String
+            if days >= 730 { label = "\(entry)  (\(days / 365)y old)" }
+            else           { label = "\(entry)  (\(config.oldDownloadsAgeDays)d+ old)" }
             items.append(CleanItem(name: label, path: path, category: .oldDownloads, sizeBytes: sizeOf(path)))
+        }
+
+        return items.sorted { $0.sizeBytes > $1.sizeBytes }
+    }
+
+    private func deadAgentLeftovers() -> [CleanItem] {
+        guard !deadLaunchItems.isEmpty else { return [] }
+
+        // Collect the 3-component bundle-ID roots of every dead agent
+        // e.g. com.spotify.webhelper → "com.spotify.webhelper" and "com.spotify"
+        var roots: Set<String> = []
+        for item in deadLaunchItems {
+            let label = item.label.lowercased()
+            roots.insert(label)
+            let parts = label.components(separatedBy: ".")
+            if parts.count >= 3 {
+                roots.insert(parts.prefix(3).joined(separator: "."))
+            }
+        }
+
+        let known = installedAppSet()
+        var items: [CleanItem] = []
+
+        // Application Support and Containers
+        let dirs: [(String, Bool)] = [
+            ("\(home)/Library/Application Support", false),
+            ("\(home)/Library/Containers",          true),
+            ("\(home)/Library/Group Containers",    true),
+        ]
+        for (base, isBundleNamed) in dirs {
+            guard let entries = try? fm.contentsOfDirectory(atPath: base) else { continue }
+            for entry in entries where entry != ".DS_Store" {
+                let lower = entry.lowercased()
+                guard roots.contains(where: { lower.hasPrefix($0) || lower == $0 }) else { continue }
+                if isBundleNamed && known.matchesBundleID(entry) { continue }
+                if !isBundleNamed && known.matches(name: entry)   { continue }
+                let path = "\(base)/\(entry)"
+                let size = sizeOf(path)
+                guard size >= 102_400 else { continue }
+                items.append(CleanItem(name: entry, path: path, category: .deadAgentLeftovers, sizeBytes: size))
+            }
+        }
+
+        // Preferences plists
+        let prefsBase = "\(home)/Library/Preferences"
+        if let entries = try? fm.contentsOfDirectory(atPath: prefsBase) {
+            for entry in entries where entry.hasSuffix(".plist") {
+                let lower = entry.replacingOccurrences(of: ".plist", with: "").lowercased()
+                guard roots.contains(where: { lower.hasPrefix($0) || lower == $0 }) else { continue }
+                let path = "\(prefsBase)/\(entry)"
+                let size = sizeOf(path)
+                guard size > 0 else { continue }
+                items.append(CleanItem(name: entry, path: path, category: .deadAgentLeftovers, sizeBytes: size))
+            }
         }
 
         return items.sorted { $0.sizeBytes > $1.sizeBytes }
@@ -229,7 +363,7 @@ struct CleanScanner {
 
     // MARK: - App matching
 
-    private struct AppSet {
+    struct AppSet {
         var bundleIDs: Set<String> = []
         var names: Set<String> = []
 
@@ -269,6 +403,17 @@ struct CleanScanner {
         }
 
         return set
+    }
+
+    // MARK: - Concurrent result collection
+
+    // @unchecked Sendable: slots are written once each at distinct indices by
+    // concurrentPerform — no two iterations touch the same slot.
+    private final class ResultSlots: @unchecked Sendable {
+        private var slots: [[CleanItem]]
+        init(count: Int) { slots = .init(repeating: [], count: count) }
+        func set(_ items: [CleanItem], at i: Int) { slots[i] = items }
+        func collect() -> [CleanItem] { slots.flatMap { $0 } }
     }
 
     // MARK: - Helpers

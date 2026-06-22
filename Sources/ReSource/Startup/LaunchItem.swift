@@ -4,21 +4,24 @@ enum LaunchLocation: String {
     case userAgent    = "User Agents"
     case systemAgent  = "System Agents"
     case systemDaemon = "System Daemons"
+    case loginItem    = "Login Items"
 
-    var directory: String {
+    var directory: String? {
         switch self {
         case .userAgent:
             return (FileManager.default.homeDirectoryForCurrentUser.path as NSString)
                 .appendingPathComponent("Library/LaunchAgents")
         case .systemAgent:  return "/Library/LaunchAgents"
         case .systemDaemon: return "/Library/LaunchDaemons"
+        case .loginItem:    return nil
         }
     }
 
     var displayPath: String {
         switch self {
-        case .userAgent: return "~/Library/LaunchAgents"
-        default:         return directory
+        case .userAgent:    return "~/Library/LaunchAgents"
+        case .loginItem:    return "System Settings → General → Login Items"
+        default:            return directory ?? ""
         }
     }
 }
@@ -31,7 +34,7 @@ enum LaunchStatus {
 
 struct LaunchItem {
     let label: String
-    let plistPath: String
+    let plistPath: String?           // nil for SMAppService / Login Items
     let location: LaunchLocation
     let executablePath: String?
     let displayName: String          // human-readable app/service name

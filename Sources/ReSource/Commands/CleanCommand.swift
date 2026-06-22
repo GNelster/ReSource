@@ -13,9 +13,14 @@ struct CleanCommand: ParsableCommand {
     )
 
     mutating func run() throws {
-        let scanner = CleanScanner()
         let spinner = Spinner("Scanning for cleanable items")
         spinner.start()
+
+        // Scan startup items first so dead agents can be cross-referenced
+        let startupResults = StartupScanner().scan()
+        let deadItems = startupResults.values.flatMap { $0 }.filter { $0.isDead }
+
+        let scanner = CleanScanner(deadLaunchItems: deadItems)
         let items = scanner.scan()
         spinner.stop(success: true, label: "Scan complete — \(items.count) items found")
 

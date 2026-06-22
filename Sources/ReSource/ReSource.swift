@@ -5,12 +5,16 @@ struct ReSourceCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "resource",
         abstract: "Mac resource inspector — startup items, disk cleanup, and memory.",
-        subcommands: [StartupCommand.self, CleanCommand.self, MemoryCommand.self]
+        subcommands: [DiskCommand.self, StartupCommand.self, CleanCommand.self, MemoryCommand.self, ConfigCommand.self]
     )
 
     mutating func run() throws {
         installSignalHandlers()
         let menu = MainMenu(entries: [
+            MenuEntry(name: "disk",    description: "Analyze disk usage with macOS-aware insights") {
+                var cmd = try DiskCommand.parse([])
+                try cmd.run()
+            },
             MenuEntry(name: "startup", description: "Audit launch agents, daemons, and login items") {
                 var cmd = try StartupCommand.parse([])
                 try cmd.run()

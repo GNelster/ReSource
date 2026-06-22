@@ -8,13 +8,78 @@ struct StartupScanner {
         for location in [LaunchLocation.userAgent, .systemAgent, .systemDaemon] {
             result[location] = scanDirectory(location)
         }
+        let logins = loginItems()
+        if !logins.isEmpty { result[.loginItem] = logins }
         return result
+    }
+
+    // MARK: - Login items (SMAppService / BTM)
+
+    private func loginItems() -> [LaunchItem] {
+        guard let raw = Shell.output("/usr/bin/sfltool", "dumpbtm"), !raw.isEmpty else { return [] }
+
+        var items: [LaunchItem] = []
+        var name: String?
+        var bundleID: String?
+        var urlStr: String?
+        var enabled = true
+
+        func flush() {
+            guard let n = name else { return }
+            let execPath: String? = urlStr
+                .flatMap { URL(string: $0) }
+                .map { url -> String in
+                    var path = url.path
+                    if path.hasSuffix("/") { path = String(path.dropLast()) }
+                    return path
+                }
+            let status: LaunchStatus
+            if let path = execPath {
+                status = fm.fileExists(atPath: path) ? .alive : .dead(missingPath: path)
+            } else {
+                status = .noExecutable
+            }
+            items.append(LaunchItem(
+                label:          bundleID ?? n,
+                plistPath:      nil,
+                location:       .loginItem,
+                executablePath: execPath,
+                displayName:    n,
+                runAtLoad:      enabled,
+                startInterval:  nil,
+                status:         status
+            ))
+        }
+
+        for line in raw.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("Name:") {
+                flush()
+                name      = field(t, prefix: "Name:")
+                bundleID  = nil
+                urlStr    = nil
+                enabled   = true
+            } else if t.hasPrefix("Bundle ID:") || t.hasPrefix("BundleID:") {
+                bundleID  = t.components(separatedBy: ":").dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
+            } else if t.hasPrefix("URL:") {
+                urlStr    = field(t, prefix: "URL:")
+            } else if t.hasPrefix("Enabled:") {
+                let v = field(t, prefix: "Enabled:").lowercased()
+                enabled   = v == "yes" || v == "true" || v == "1"
+            }
+        }
+        flush()
+        return items
+    }
+
+    private func field(_ line: String, prefix: String) -> String {
+        String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: - Directory scan
 
     private func scanDirectory(_ location: LaunchLocation) -> [LaunchItem] {
-        let dir = location.directory
+        guard let dir = location.directory else { return [] }
         guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
         return files
             .filter  { $0.hasSuffix(".plist") }
@@ -114,13 +179,13 @@ struct StartupScanner {
         return components[appIndex].replacingOccurrences(of: ".app", with: "")
     }
 
-    private func humanise(_ label: String) -> String {
+    func humanise(_ label: String) -> String {
         // com.spotify.webhelper → Spotify
         // io.tailscale.ipn.macos → Tailscale
         let parts = label.components(separatedBy: ".")
-        guard parts.count >= 3 else { return label }
-        // Skip the TLD-style prefix (com, io, org, net, co) and company name
-        let namePart = parts[2]
+        guard parts.count >= 2 else { return label }
+        // parts[0] is the TLD (com, io, org…); parts[1] is the brand/company name
+        let namePart = parts[1]
         return namePart
             .replacingOccurrences(of: "-", with: " ")
             .replacingOccurrences(of: "_", with: " ")

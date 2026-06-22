@@ -20,7 +20,7 @@ final class StartupListView {
     // MARK: - Init
 
     init(results: [LaunchLocation: [LaunchItem]]) {
-        let order: [LaunchLocation] = [.userAgent, .systemAgent, .systemDaemon]
+        let order: [LaunchLocation] = [.userAgent, .systemAgent, .systemDaemon, .loginItem]
         var allRows: [Row] = []
 
         for location in order {
@@ -104,14 +104,20 @@ final class StartupListView {
         var privilegedPaths: [String] = []
         var removed = 0
         var firstError: String? = nil
+        var skippedLoginItems = 0
 
         let selected = rows.filter { $0.selected }
         log += "selected count: \(selected.count)\n"
-        for r in selected { log += "  path: \(r.item.plistPath)\n" }
+        for r in selected { log += "  path: \(r.item.plistPath ?? "<login item>")\n" }
+
+        // Login items (no plist) must be removed via System Settings
+        for r in selected where r.item.plistPath == nil {
+            skippedLoginItems += 1
+        }
 
         for i in rows.indices.reversed() {
             guard rows[i].selected else { continue }
-            let path = rows[i].item.plistPath
+            guard let path = rows[i].item.plistPath else { continue } // login items — skip
 
             do {
                 try fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
@@ -147,13 +153,11 @@ final class StartupListView {
             .appendingPathComponent("Desktop/resource_debug.txt")
         try? log.write(to: logURL, atomically: true, encoding: .utf8)
 
-        if removed > 0 {
-            statusMessage = "\(removed) \(removed == 1 ? "item" : "items") moved to Trash."
-        } else if let err = firstError {
-            statusMessage = err
-        } else {
-            statusMessage = "Could not remove — see /tmp/resource_debug.txt"
-        }
+        var parts: [String] = []
+        if removed > 0 { parts.append("\(removed) \(removed == 1 ? "item" : "items") moved to Trash") }
+        if skippedLoginItems > 0 { parts.append("\(skippedLoginItems) login \(skippedLoginItems == 1 ? "item" : "items") must be removed in System Settings → General → Login Items") }
+        if parts.isEmpty, let err = firstError { parts.append(err) }
+        statusMessage = parts.joined(separator: "  ·  ")
     }
 
     /// Moves system-owned paths to Trash via sudo. Caller is responsible for
@@ -257,7 +261,10 @@ final class StartupListView {
         switch item.status {
         case .alive:
             let n = isCursor ? Style.bold(name) : name
-            return "  \(pointer) \(checkbox) \(n)  \(Style.dim(triggerText(item)))"
+            let detail = item.location == .loginItem
+                ? Style.dim(item.runAtLoad ? "enabled" : "disabled")
+                : Style.dim(triggerText(item))
+            return "  \(pointer) \(checkbox) \(n)  \(detail)"
 
         case .dead(let missing):
             let n = isCursor ? Style.bold(Color.yellow.apply(name)) : Color.yellow.apply(name)
@@ -265,7 +272,10 @@ final class StartupListView {
 
         case .noExecutable:
             let n = isCursor ? Style.bold(name) : name
-            return "  \(pointer) \(checkbox) \(n)  \(Style.dim("no executable specified"))"
+            let detail = item.location == .loginItem
+                ? Style.dim(item.runAtLoad ? "enabled" : "disabled")
+                : Style.dim("no executable specified")
+            return "  \(pointer) \(checkbox) \(n)  \(detail)"
         }
     }
 

@@ -1,8 +1,8 @@
 class Resource < Formula
   desc "Mac resource inspector — startup items, disk cleanup, and memory"
   homepage "https://github.com/GNelster/ReSource"
-  url "https://github.com/GNelster/ReSource/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "0d309f228a488f6d3bb8c2d2cfff4d663a03ad81c542b5fed70b821a5fe13097"
+  url "https://github.com/GNelster/ReSource/archive/refs/tags/v0.3.0.tar.gz"
+  sha256 "27b0680cb4fd577438ad748823d77adb1d58ea86488618d816c72ae0ccdddf16"
   license "MIT"
   head "https://github.com/GNelster/ReSource.git", branch: "main"
 

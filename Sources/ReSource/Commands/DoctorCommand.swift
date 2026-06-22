@@ -66,14 +66,14 @@ struct DoctorCommand: ParsableCommand {
         print()
 
         // ── Startup ───────────────────────────────────────────────
-        let allStartup = (slots.startupResults ?? [:]).values.flatMap { $0 }
-        let deadCount  = allStartup.filter { $0.isDead }.count
+        let startupResults = slots.startupResults ?? [:]
+        let allStartup     = startupResults.values.flatMap { $0 }
+        let deadCount      = allStartup.filter { $0.isDead }.count
         Style.subheader("Startup")
         print()
         Style.item("\(allStartup.count) items")
         if deadCount > 0 {
             Style.item(Color.yellow.apply("  \(deadCount) dead \(deadCount == 1 ? "entry" : "entries") pointing to missing executables"))
-            Style.item(Style.dim("  → run `resource startup` to review and remove"))
         } else {
             Style.item(Style.dim("  No dead entries found"))
         }
@@ -114,7 +114,6 @@ struct DoctorCommand: ParsableCommand {
             }
             print()
             Style.item("Total recoverable: \(Style.bold(Format.bytes(totalSavings)))")
-            Style.item(Style.dim("→ run `resource clean` to review and trash"))
         }
 
         print()
@@ -135,17 +134,80 @@ struct DoctorCommand: ParsableCommand {
             print()
         }
 
-        // ── Verdict ───────────────────────────────────────────────
+        // ── Actions ───────────────────────────────────────────────
         let hasWins = totalSavings > 0 || deadCount > 0
-        if hasWins {
-            var actions: [String] = []
-            if totalSavings > 0 { actions.append("`resource clean` (\(Format.bytes(totalSavings)) recoverable)") }
-            if deadCount    > 0 { actions.append("`resource startup` (\(deadCount) dead \(deadCount == 1 ? "entry" : "entries"))") }
-            Style.success("Recommended: " + actions.joined(separator: "  ·  "))
-        } else {
+        guard hasWins else {
             Style.success("Everything looks clean.")
+            print()
+            return
         }
+
+        struct Action {
+            let label: String
+            let detail: String
+        }
+        var actions: [Action] = []
+        if !items.isEmpty   { actions.append(Action(label: "clean",   detail: "\(Format.bytes(totalSavings)) recoverable")) }
+        if deadCount > 0    { actions.append(Action(label: "startup", detail: "\(deadCount) dead \(deadCount == 1 ? "entry" : "entries")")) }
+        actions.append(Action(label: "quit", detail: ""))
+
+        var selected = 0
+        var rawTerm  = RawTerminal()
+        rawTerm.enable()
+
+        func renderMenu() {
+            for (i, action) in actions.enumerated() {
+                let pointer = i == selected ? Color.green.apply("  ▶") : "     "
+                let name    = i == selected ? Style.bold(action.label.padded(to: 10)) : action.label.padded(to: 10)
+                let detail  = action.detail.isEmpty ? "" : Style.dim("  \(action.detail)")
+                print("\(pointer)  \(name)\(detail)")
+            }
+            let hints = Style.bold("↑↓") + Style.dim(" move  ·  ") + Style.bold("↵") + Style.dim(" select")
+            print("\n  \(hints)")
+            fflush(stdout)
+        }
+
+        // Move cursor up to re-render in place
+        let lineCount = actions.count + 2
+        func clearMenu() {
+            for _ in 0..<lineCount { print("\u{1B}[A\u{1B}[2K", terminator: "") }
+            fflush(stdout)
+        }
+
         print()
+        renderMenu()
+
+        var choice: Action? = nil
+        while true {
+            let key = readKey()
+            switch key {
+            case .up:
+                if selected > 0 { selected -= 1 }
+            case .down:
+                if selected < actions.count - 1 { selected += 1 }
+            case .enter:
+                choice = actions[selected]
+                break
+            case .quit:
+                break
+            default:
+                continue
+            }
+            if key == .enter || key == .quit { break }
+            clearMenu()
+            renderMenu()
+        }
+
+        rawTerm.disable()
+
+        guard let picked = choice, picked.label != "quit" else { return }
+
+        Cursor.clear()
+        switch picked.label {
+        case "clean":   try CleanListView(items: items).run()
+        case "startup": try StartupListView(results: startupResults).run()
+        default:        break
+        }
     }
 }
 

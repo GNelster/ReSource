@@ -1,6 +1,8 @@
 import Foundation
 import Darwin
 
+
+// Class for Clean Viewing of Lists.
 final class CleanListView {
 
     // MARK: - Types
@@ -9,6 +11,7 @@ final class CleanListView {
         let item: CleanItem
         var selected: Bool
     }
+
 
     // MARK: - State
 

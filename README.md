@@ -45,14 +45,19 @@ Shows a live breakdown of system RAM and top processes sorted by usage — same 
 **Homebrew (recommended)**
 
 ```bash
-brew tap gmnelson/resource
+brew install GNelster/resource/resource
+```
+
+Or as two steps:
+```bash
+brew tap GNelster/resource
 brew install resource
 ```
 
 **Build from source**
 
 ```bash
-git clone https://github.com/gmnelson/ReSource.git
+git clone https://github.com/GNelster/ReSource.git
 cd ReSource
 swift build -c release
 sudo cp .build/release/ReSource /usr/local/bin/resource

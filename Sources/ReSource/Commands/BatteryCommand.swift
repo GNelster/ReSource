@@ -27,10 +27,9 @@ struct BatteryCommand: ParsableCommand {
         Style.subheader("Health")
         print()
 
-        let healthPct = Int((s.healthFraction * 100).rounded())
         let healthBar = Format.bar(fraction: s.healthFraction, width: 20)
         let healthColored: String
-        switch healthPct {
+        switch s.healthPercent {
         case 80...: healthColored = Color.green.apply(healthBar)
         case 60..<80: healthColored = Color.yellow.apply(healthBar)
         default:    healthColored = Color.red.apply(healthBar)
@@ -40,38 +39,21 @@ struct BatteryCommand: ParsableCommand {
             ? Color.yellow.apply(s.condition)
             : s.condition
 
-        Style.item("\(healthColored)  \(Style.bold("\(healthPct)%"))  \(conditionColored)")
+        Style.item("\(healthColored)  \(Style.bold("\(s.healthPercent)%"))  \(conditionColored)")
         print()
-
-        let cols  = min(TermSize.columns, 80)
-        let nameW = 18
-        let valW  = 10
-
-        func row(_ label: String, _ value: String) {
-            Style.item("\(label.padded(to: nameW))  \(value)")
-        }
-
-        row("Cycle count",     Style.bold("\(s.cycleCount)"))
-        if s.designCapacity > 0 {
-            row("Max capacity",   Style.bold("\(s.maxCapacity) mAh") + Style.dim("  of \(s.designCapacity) mAh design"))
-        }
+        Style.item("Cycle count  \(Style.bold("\(s.cycleCount)"))")
         print()
 
         // ── Charge ────────────────────────────────────────────
         Style.subheader("Charge")
         print()
 
-        let chargePct = Int((s.chargeFraction * 100).rounded())
         let chargeBar = Format.bar(fraction: s.chargeFraction, width: 20)
-        let chargeColored = chargePct > 20
+        let chargeColored = s.chargePercent > 20
             ? Color.green.apply(chargeBar)
             : Color.yellow.apply(chargeBar)
         let chargingLabel = s.isCharging ? Style.dim("  (charging)") : ""
-        Style.item("\(chargeColored)  \(Style.bold("\(chargePct)%"))\(chargingLabel)")
-        if s.currentCharge > 0 && s.maxCapacity > 0 {
-            print()
-            Style.item(Style.dim("\(s.currentCharge) mAh remaining of \(s.maxCapacity) mAh"))
-        }
+        Style.item("\(chargeColored)  \(Style.bold("\(s.chargePercent)%"))\(chargingLabel)")
         print()
 
         // ── Tip ───────────────────────────────────────────────
@@ -81,11 +63,5 @@ struct BatteryCommand: ParsableCommand {
             Style.warning("Battery condition is \"\(s.condition)\". Consider a replacement.")
         }
         print()
-    }
-}
-
-private extension String {
-    func padded(to length: Int) -> String {
-        count >= length ? self : self + String(repeating: " ", count: length - count)
     }
 }

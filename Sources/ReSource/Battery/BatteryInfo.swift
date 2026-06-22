@@ -1,22 +1,14 @@
 import Foundation
 
 struct BatterySnapshot {
-    let cycleCount:       Int
-    let designCapacity:   Int       // mAh
-    let maxCapacity:      Int       // mAh (current full-charge capacity)
-    let currentCharge:    Int       // mAh
-    let condition:        String    // "Normal", "Service Recommended", etc.
-    let isCharging:       Bool
+    let cycleCount:    Int
+    let healthPercent: Int      // Maximum Capacity %
+    let chargePercent: Int      // State of Charge %
+    let condition:     String
+    let isCharging:    Bool
 
-    var healthFraction: Double {
-        guard designCapacity > 0 else { return 0 }
-        return Double(maxCapacity) / Double(designCapacity)
-    }
-
-    var chargeFraction: Double {
-        guard maxCapacity > 0 else { return 0 }
-        return Double(currentCharge) / Double(maxCapacity)
-    }
+    var healthFraction: Double { Double(healthPercent) / 100.0 }
+    var chargeFraction: Double { Double(chargePercent) / 100.0 }
 }
 
 enum BatteryInfo {
@@ -39,31 +31,24 @@ enum BatteryInfo {
 
         guard let cycleStr = value(for: "Cycle Count"), let cycles = Int(cycleStr) else { return nil }
 
-        let design  = value(for: "Full Charge Capacity (mAh)").flatMap { Int($0) }
-                   ?? value(for: "Design Capacity").flatMap { Int($0) }
-                   ?? 0
-        let maxCap  = value(for: "Full Charge Capacity (mAh)").flatMap { Int($0) }
-                   ?? value(for: "Maximum Capacity").flatMap { percentToMAh($0, design: design) }
-                   ?? 0
-        let current = value(for: "Charge Remaining (mAh)").flatMap { Int($0) } ?? 0
-        let condition = value(for: "Condition") ?? "Unknown"
-        let charging  = value(for: "Charging")?.lowercased() == "yes"
-                     || value(for: "AC Charger Information") != nil
+        // "Maximum Capacity: 100%"
+        let healthPct = value(for: "Maximum Capacity")
+            .map { $0.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces) }
+            .flatMap { Int($0) } ?? 0
+
+        // "State of Charge (%): 97"
+        let chargePct = value(for: "State of Charge (%)")
+            .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
+
+        let condition  = value(for: "Condition") ?? "Normal"
+        let charging   = value(for: "Charging")?.trimmingCharacters(in: .whitespaces).lowercased() == "yes"
 
         return BatterySnapshot(
-            cycleCount:     cycles,
-            designCapacity: design,
-            maxCapacity:    maxCap,
-            currentCharge:  current,
-            condition:      condition,
-            isCharging:     charging
+            cycleCount:    cycles,
+            healthPercent: healthPct,
+            chargePercent: chargePct,
+            condition:     condition,
+            isCharging:    charging
         )
-    }
-
-    private static func percentToMAh(_ str: String, design: Int) -> Int? {
-        guard let pct = Double(str.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)),
-              design > 0
-        else { return nil }
-        return Int((pct / 100.0) * Double(design))
     }
 }

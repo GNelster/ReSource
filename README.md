@@ -1,10 +1,13 @@
 # ReSource
 
-A macOS terminal tool for auditing startup items, reclaiming disk space, and monitoring memory. Built for people who want to know what's running on their machine and clean it up without installing a GUI app.
+A macOS terminal tool for auditing startup items, reclaiming disk space, monitoring memory, and checking battery health. Built for people who want to know what's running on their machine and clean it up without installing a GUI app.
 
 ![ReSource](screenshot.png)
 
 ## Features
+
+### Doctor
+Runs a quick health check across all domains and surfaces the biggest wins in one view: disk usage, cleanable cache totals by category, dead startup entries, and battery health. Ends with an action menu so you can jump straight into `clean` or `startup`.
 
 ### Disk
 Surfaces what `du`-based tools miss: APFS purgeable space, local Time Machine snapshot sizes, and a breakdown of your home directory sorted by size.
@@ -34,6 +37,9 @@ All scans run in parallel for fast results. Settings (download age threshold, ex
 
 ### Memory
 Shows a live breakdown of system RAM and top processes sorted by usage — same categories as Activity Monitor (Used, App, Wired, Compressed, Cached, Free).
+
+### Battery
+Shows battery health (maximum capacity %), cycle count, current charge, and charging status. Warns when cycle count is high or the condition requires service. Gracefully skips on desktop Macs.
 
 ## Requirements
 
@@ -69,10 +75,12 @@ Then just type `resource` in any terminal window.
 
 ```
 resource           # interactive menu
+resource doctor    # quick health check
 resource disk      # analyze disk usage
-resource startup   # jump straight to startup audit
-resource clean     # jump straight to clean
-resource memory    # jump straight to memory
+resource startup   # audit startup items
+resource clean     # reclaim cache space
+resource memory    # show RAM by process
+resource battery   # show battery health
 resource config    # view and edit settings
 ```
 
@@ -84,29 +92,6 @@ resource config    # view and edit settings
 | `↵` or `Space` | Toggle selection |
 | `⌫` (Delete) | Move selected items to Trash |
 | `Esc` or `q` | Back / quit |
-
-## Running on a Mac without Xcode
-
-If you're installing a pre-built binary on someone else's Mac, macOS will block it because it isn't signed by a known developer. To get around this, right-click the binary in Finder and choose **Open**, then click **Open** again when prompted. After that first approval it runs normally.
-
-Or from Terminal:
-```bash
-xattr -dr com.apple.quarantine /usr/local/bin/resource
-```
-
-## Project structure
-
-```
-Sources/ReSource/
-  ReSource.swift          # entry point, main menu
-  Commands/               # argument-parser subcommands
-  Startup/                # launch item scanning and list view
-  Clean/                  # cache scanning and list view
-  Memory/                 # memory snapshot and process list
-  TUI/                    # raw terminal, menu, key reading
-  Output/                 # spinner, progress bar, styles
-  Utils/                  # shell runner, formatter, prompt
-```
 
 ## Built with
 
